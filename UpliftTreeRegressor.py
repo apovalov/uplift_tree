@@ -1,8 +1,8 @@
+from __future__ import annotations
 import numpy as np
 import pandas as pd
-from metrics import uplift_at_k
-# from sklearn.model_selection import train_test_split
 from dataclasses import dataclass
+from typing import Tuple
 
 np.seterr(divide='ignore', invalid='ignore')
 
@@ -18,10 +18,10 @@ class Node:
 
 @dataclass
 class UpliftTreeRegressor:
-    def __init__(self, max_depth=3,
-                 min_samples_leaf=1000,
-                 min_samples_leaf_treated=300,
-                 min_samples_leaf_control=300):
+    def __init__(self, max_depth,
+                 min_samples_leaf,
+                 min_samples_leaf_treated,
+                 min_samples_leaf_control):
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
         self.min_samples_leaf_treated = min_samples_leaf_treated
@@ -29,7 +29,7 @@ class UpliftTreeRegressor:
 
     def fit(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> 'UpliftTreeRegressor':
         self.n_features_ = X.shape[1]
-        self.tree_ = self._split_node(X, treatment, y)
+        self.tree_ = self._build(X, treatment, y)
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -89,13 +89,30 @@ class UpliftTreeRegressor:
 
         return delta_delta_p
 
-    def _split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, feature: int) -> tuple[float, float]:
+    def _best_trashold(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, feature: int) -> Tuple[float, float]:
         best_threshold = None
         best_delta_delta_p = float('-inf')
 
         threshold_options = self.find_threshold_options(X[:, feature])
 
         for threshold in threshold_options:
+            left_indices = X[:, feature] <= threshold
+            right_indices = X[:, feature] > threshold
+            left_treated = treatment[left_indices]
+            right_treated = treatment[right_indices]
+            left_control = treatment[left_indices] == 0
+            right_control = treatment[right_indices] == 0
+
+            if (
+                np.sum(left_indices) < self.min_samples_leaf
+                or np.sum(right_indices) < self.min_samples_leaf
+                or np.sum(left_treated) < self.min_samples_leaf_treated
+                or np.sum(right_treated) < self.min_samples_leaf_treated
+                or np.sum(left_control) < self.min_samples_leaf_control
+                or np.sum(right_control) < self.min_samples_leaf_control
+            ):
+                continue
+
             delta_delta_p = self.calculate_delta_delta_p(X, y, treatment, feature, threshold)
             if delta_delta_p > best_delta_delta_p:
                 best_delta_delta_p = delta_delta_p
@@ -103,25 +120,22 @@ class UpliftTreeRegressor:
 
         return best_threshold, best_delta_delta_p
 
-    def _best_split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> tuple[int, float, float]:
+    def _best_split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> Tuple[int, float, float]:
         best_feature = None
         best_threshold = None
         best_delta_delta_p = float('-inf')
 
         for feature in range(self.n_features_):
-            threshold, delta_delta_p = self._split(X=X, treatment=treatment, y=y, feature=feature)
+            threshold, delta_delta_p = self._best_trashold(X=X, treatment=treatment, y=y, feature=feature)
             if delta_delta_p > best_delta_delta_p:
-                left_indices = X[:, feature] <= threshold
-                right_indices = X[:, feature] > threshold
-                if np.sum(left_indices) < self.min_samples_leaf or np.sum(right_indices) < self.min_samples_leaf:
-                    continue
                 best_delta_delta_p = delta_delta_p
                 best_threshold = threshold
                 best_feature = feature
 
         return best_feature, best_threshold, best_delta_delta_p
 
-    def _split_node(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, depth: int = 0) -> Node:
+
+    def _build(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, depth: int = 0) -> Node:
         n_samples = len(y)
         uplift = np.abs(np.mean(y[treatment == 1]) - np.mean(y[treatment == 0]))
 
@@ -132,7 +146,12 @@ class UpliftTreeRegressor:
             split_threshold=0,
         )
 
-        if depth >= self.max_depth or n_samples <= self.min_samples_leaf:
+        if (
+            depth >= self.max_depth
+            or n_samples <= self.min_samples_leaf
+            or np.sum(treatment) < self.min_samples_leaf_treated
+            or np.sum(treatment==0) < self.min_samples_leaf_control
+            ):
             return node
 
         best_feature, best_threshold, best_delta_delta_p = self._best_split(X, treatment, y)
@@ -147,8 +166,8 @@ class UpliftTreeRegressor:
             X_left, treatment_left, y_left = X[left_mask], treatment[left_mask], y[left_mask]
             X_right, treatment_right, y_right = X[right_mask], treatment[right_mask], y[right_mask]
 
-            node.left = self._split_node(X_left, treatment_left, y_left, depth + 1)
-            node.right = self._split_node(X_right, treatment_right, y_right, depth + 1)
+            node.left = self._build(X_left, treatment_left, y_left, depth + 1)
+            node.right = self._build(X_right, treatment_right, y_right, depth + 1)
 
         return node
 
@@ -168,71 +187,8 @@ class UpliftTreeRegressor:
                 file.write('\t' * (depth + 2) + f'split_feat: {node.split_feat}\n')
                 file.write('\t' * (depth + 2) + f'split_threshold: {node.split_threshold}\n')
             else:
-                # Recursively write the left and right child nodes
+                # Recursively write the left child node
                 self.save_tree_to_txt(node.left, file, depth + 1)
+
+                # Recursively write the right child node
                 self.save_tree_to_txt(node.right, file, depth + 1)
-
-# # Load data from a CSV file
-# data = pd.read_csv('data/data.csv')
-
-# # Extract features and target variables
-# X_data = data.loc[:, data.columns.str.contains('feat')]
-# y_data = data['target']
-# treatment_data = data['treatment']
-
-# X = X_data.values
-# y = y_data.values
-# treatment = treatment_data.values
-
-# X_train, X_test, treatment_train, treatment_test, y_train, y_test = train_test_split(X, treatment, y, test_size=0.2, random_state=10)
-
-# # Задаем комбинации параметров, которые хотим попробовать
-# # max_depth_values = [3, 5, 7, 9]
-# # min_samples_leaf_values = [1000, 2000, 3000, 5000, 6000, 8000]
-# # min_samples_leaf_treated_values = [300, 500, 1000, 3000, 5000, 6500]
-# # min_samples_leaf_control_values = [300, 500, 1000, 3000, 5000, 6500]
-
-# max_depth_values = [3, 5, 7]
-# min_samples_leaf_values = [1000, 2000, 3000]
-# min_samples_leaf_treated_values = [300, 500, 1000]
-# min_samples_leaf_control_values = [300, 500, 1000]
-
-# best_uplift = float('-inf')
-# best_params = {}
-# best_uplift_model: UpliftTreeRegressor = None
-
-# # Перебираем все комбинации параметров
-# for max_depth in max_depth_values:
-#     for min_samples_leaf in min_samples_leaf_values:
-#         for min_samples_leaf_treated in min_samples_leaf_treated_values:
-#             for min_samples_leaf_control in min_samples_leaf_control_values:
-#                 uplift_model = UpliftTreeRegressor(
-#                     max_depth=max_depth,
-#                     min_samples_leaf=min_samples_leaf,
-#                     min_samples_leaf_treated=min_samples_leaf_treated,
-#                     min_samples_leaf_control=min_samples_leaf_control
-#                 )
-#                 uplift_model.fit(X_train, treatment_train, y_train)
-
-#                 # Получаем предсказания uplift и вычисляем метрику uplift@k
-#                 uplift_predictions = uplift_model.predict(X_test)
-#                 metric = uplift_at_k(y_test, uplift_predictions, treatment_test, k=0.2)
-
-#                 # Если текущая метрика лучше предыдущей, обновляем лучшие параметры
-#                 if metric > best_uplift:
-#                     best_uplift = metric
-#                     best_params = {
-#                         'max_depth': max_depth,
-#                         'min_samples_leaf': min_samples_leaf,
-#                         'min_samples_leaf_treated': min_samples_leaf_treated,
-#                         'min_samples_leaf_control': min_samples_leaf_control
-#                     }
-#                     best_uplift_model = uplift_model
-
-
-# # Save the tree to a text file
-# with open('data/uplift_tree.txt', 'w') as file:
-#     best_uplift_model.save_tree_to_txt(best_uplift_model.tree_, file)
-
-# print(f'Best uplift@k: {best_uplift}')
-# print(f'Best parameters: {best_params}')

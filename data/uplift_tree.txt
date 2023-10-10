@@ -1,10 +1,55 @@
 Node
-	n_items: 32000
-	ATE: 163.17753391819457
-	split_feat: None
-	split_threshold: None
-	<leaf>
+	n_items: 40000
+	ATE: 163.6276780015877
+	split_feat: 0
+	split_threshold: 0.842884156
+	Node
 		n_items: 32000
-		ATE: 163.17753391819457
+		ATE: 92.4210684009924
+		split_feat: 0
+		split_threshold: -0.98272248
+		Node
+			n_items: 6400
+			ATE: 139.95838047140154
+			split_feat: None
+			split_threshold: None
+			<leaf>
+				n_items: 6400
+				ATE: 139.95838047140154
+				split_feat: None
+				split_threshold: None
+		Node
+			n_items: 25600
+			ATE: 149.90221050493
+			split_feat: 1
+			split_threshold: 0.525406681
+			Node
+				n_items: 17920
+				ATE: 95.1193881016224
+				split_feat: None
+				split_threshold: 0
+				<leaf>
+					n_items: 17920
+					ATE: 95.1193881016224
+					split_feat: None
+					split_threshold: 0
+			Node
+				n_items: 7680
+				ATE: 282.6153675565066
+				split_feat: None
+				split_threshold: 0
+				<leaf>
+					n_items: 7680
+					ATE: 282.6153675565066
+					split_feat: None
+					split_threshold: 0
+	Node
+		n_items: 8000
+		ATE: 444.7676808824675
 		split_feat: None
 		split_threshold: None
+		<leaf>
+			n_items: 8000
+			ATE: 444.7676808824675
+			split_feat: None
+			split_threshold: None

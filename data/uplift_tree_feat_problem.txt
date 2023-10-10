@@ -1,0 +1,115 @@
+Node
+	n_items: 40000
+	ATE: 163.6276780015877
+	split_feat: 0
+	split_threshold: 1.8704926619999995
+	Node
+		n_items: 38800
+		ATE: 149.53295860659267
+		split_feat: 0
+		split_threshold: -1.88628723
+		Node
+			n_items: 1164
+			ATE: 293.66145973606245
+			split_feat: None
+			split_threshold: None
+			<leaf>
+				n_items: 1164
+				ATE: 293.66145973606245
+				split_feat: None
+				split_threshold: None
+		Node
+			n_items: 37636
+			ATE: 162.76992323152956
+			split_feat: 0
+			split_threshold: 1.5647617549999997
+			Node
+				n_items: 36506
+				ATE: 152.20717368997634
+				split_feat: 0
+				split_threshold: -1.574344445
+				Node
+					n_items: 1096
+					ATE: 168.0314621758888
+					split_feat: None
+					split_threshold: None
+					<leaf>
+						n_items: 1096
+						ATE: 168.0314621758888
+						split_feat: None
+						split_threshold: None
+				Node
+					n_items: 35410
+					ATE: 161.65675887373374
+					split_feat: 0
+					split_threshold: 1.2683780749999995
+					Node
+						n_items: 33639
+						ATE: 146.4041893235517
+						split_feat: 1
+						split_threshold: 1.88971928
+						Node
+							n_items: 32629
+							ATE: 138.90211931728743
+							split_feat: 1
+							split_threshold: 1.41889666
+							Node
+								n_items: 30997
+								ATE: 126.4734123323413
+								split_feat: None
+								split_threshold: 0
+								<leaf>
+									n_items: 30997
+									ATE: 126.4734123323413
+									split_feat: None
+									split_threshold: 0
+							Node
+								n_items: 1632
+								ATE: 363.73772622256456
+								split_feat: None
+								split_threshold: 0
+								<leaf>
+									n_items: 1632
+									ATE: 363.73772622256456
+									split_feat: None
+									split_threshold: 0
+						Node
+							n_items: 1010
+							ATE: 424.6368561449824
+							split_feat: None
+							split_threshold: None
+							<leaf>
+								n_items: 1010
+								ATE: 424.6368561449824
+								split_feat: None
+								split_threshold: None
+					Node
+						n_items: 1771
+						ATE: 451.6762608096732
+						split_feat: None
+						split_threshold: None
+						<leaf>
+							n_items: 1771
+							ATE: 451.6762608096732
+							split_feat: None
+							split_threshold: None
+			Node
+				n_items: 1130
+				ATE: 492.7617165939083
+				split_feat: None
+				split_threshold: None
+				<leaf>
+					n_items: 1130
+					ATE: 492.7617165939083
+					split_feat: None
+					split_threshold: None
+	Node
+		n_items: 1200
+		ATE: 631.2683601693502
+		split_feat: None
+		split_threshold: None
+		<leaf>
+			n_items: 1200
+			ATE: 631.2683601693502
+			split_feat: None
+			split_threshold: None
