@@ -1,0 +1,10 @@
+Node
+	n_items: 32000
+	ATE: 163.17753391819457
+	split_feat: None
+	split_threshold: None
+	<leaf>
+		n_items: 32000
+		ATE: 163.17753391819457
+		split_feat: None
+		split_threshold: None

@@ -1,162 +1,62 @@
 import numpy as np
 import pandas as pd
+from metrics import uplift_at_k
+# from sklearn.model_selection import train_test_split
 from dataclasses import dataclass
 
-# Data
-
-def check_data_constraints(data):
-    # Проверка на длину X <= 100000
-    if len(data) > 100000:
-        return False, "Длина X больше 100000"
-
-    # Проверка на число признаков <= 10
-    num_features = len(data.columns) - 3  # Вычитаем 'id', 'treatment' и 'target'
-    if num_features > 10:
-        return False, "Число признаков больше 10"
-
-    # Проверка на вещественные числа для признаков и таргета
-    if not data.loc[:, 'feat0':'target'].applymap(lambda x: isinstance(x, (int, float))).all().all():
-        return False, "Значения признаков или таргета не являются вещественными числами"
-
-    # Проверка на значения флага воздействия {0, 1}
-    if not set(data['treatment']).issubset({0, 1}):
-        return False, "Значения флага воздействия не входят в множество {0, 1}"
-
-    return True, "Данные соответствуют ограничениям"
-
-# Считываем данные из CSV-файла
-data = pd.read_csv('data/data.csv')
-
-#Pandas data
-# Извлекаем все столбцы между 'id' и 'treatment', включая 'id' и 'treatment'
-X_data = data.loc[:, data.columns.str.contains('feat')] #data.loc[:, start_column:end_column]
-# Извлекаем значения целевой переменной (target) в виде numpy-вектора y
-y_data = data['target']
-# y_test = data[['target', 'treatment']]
-# Извлекаем флаг воздействия (treatment) в виде numpy-вектора treatment
-treatment_data = data['treatment']
-
-# Numpy data
-# data_values = data.values
-
-X = X_data.values
-y = y_data.values
-treatment = treatment_data.values
-
-
-
-
-
-# def find_threshold_options(column_values):
-#     unique_values = np.unique(column_values)
-#     if len(unique_values) > 10:
-#         percentiles = np.percentile(
-#             column_values, [3, 5, 10, 20, 30, 50, 70, 80, 90, 95, 97]
-#         )
-#     else:
-#         percentiles = np.percentile(unique_values, [10, 50, 90])
-
-#     threshold_options = np.unique(percentiles)
-#     return threshold_options
-
-
-
-
-# def calculate_delta_delta_p(X, y, treatment, feature, threshold):
-#     treated_mask = (treatment == 1) & (X[:, feature] <= threshold)
-#     control_mask = (treatment == 0) & (X[:, feature] <= threshold)
-
-#     treated_group = y[treated_mask]
-#     control_group = y[control_mask]
-
-#     uplift_treated = np.mean(treated_group) - np.mean(control_group)
-
-#     treated_prop = np.sum(treatment == 1) / len(treatment)
-#     control_prop = np.sum(treatment == 0) / len(treatment)
-
-#     delta_delta_p = uplift_treated - (treated_prop - control_prop)
-
-#     return delta_delta_p
-
-
-# def split(X: np.ndarray, treatment: np.ndarray, y: np.ndarray, feature: int) -> tuple[float, float]:
-#     """Find the best split for a node (one feature) using DeltaDeltaP criterion."""
-#     best_threshold = None
-#     best_delta_delta_p = float('-inf')  # Initialize with negative infinity
-
-#     threshold_options = find_threshold_options(X[:, feature])
-
-#     for threshold in threshold_options:
-#         treated_mask = (treatment == 1) & (X[:, feature] <= threshold)
-#         control_mask = (treatment == 0) & (X[:, feature] <= threshold)
-
-#         treated_group = y[treated_mask]
-#         control_group = y[control_mask]
-
-#         uplift_treated = np.mean(treated_group) - np.mean(control_group)
-
-#         treated_prop = np.sum(treatment == 1) / len(treatment)
-#         control_prop = np.sum(treatment == 0) / len(treatment)
-
-#         delta_delta_p = uplift_treated - (treated_prop - control_prop)
-
-#         if delta_delta_p > best_delta_delta_p:
-#             best_delta_delta_p = delta_delta_p
-#             best_threshold = threshold
-
-#     return best_threshold, best_delta_delta_p
-
-# def best_split(X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> tuple[int, float, float]:
-#     """Find the best split for a node using DeltaDeltaP criterion."""
-#     best_feature = 0
-#     best_threshold = None
-#     best_delta_delta_p = float('-inf')  # Initialize with negative infinity
-
-#     for feature in range(n_features_):
-#         threshold, delta_delta_p = split(X=X, treatment=treatment, y=y, feature=feature)
-
-#         if delta_delta_p > best_delta_delta_p:
-#             best_delta_delta_p = delta_delta_p
-#             best_threshold = threshold
-#             best_feature = feature
-
-#     return best_feature, best_threshold, best_delta_delta_p
-
-# split = split(X, treatment, y, feature=0)
-# print(split)
-
-
-
+np.seterr(divide='ignore', invalid='ignore')
 
 @dataclass
 class Node:
     """Decision tree node with uplift-specific fields."""
-    n_items: int  # Количество элементов в вершине
-    ATE: float  # Средний эффект воздействия (ATE) в вершине
-    split_feat: int  # Признак, по которому происходит разбиение
-    split_threshold: float  # Порог разбиения
-
+    n_items: int
+    ATE: float
+    split_feat: int
+    split_threshold: float
     left: 'Node' = None
     right: 'Node' = None
-
 
 @dataclass
 class UpliftTreeRegressor:
     def __init__(self, max_depth=3,
-                 min_samples_leaf=6000,
-                 min_samples_leaf_treated=2500,
-                 min_samples_leaf_control=2500):
+                 min_samples_leaf=1000,
+                 min_samples_leaf_treated=300,
+                 min_samples_leaf_control=300):
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
         self.min_samples_leaf_treated = min_samples_leaf_treated
         self.min_samples_leaf_control = min_samples_leaf_control
 
-    def fit(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> UpliftTreeRegressor:
+    def fit(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> 'UpliftTreeRegressor':
         self.n_features_ = X.shape[1]
         self.tree_ = self._split_node(X, treatment, y)
         return self
 
-    def find_threshold_options(column_values):
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """
+        Predict uplift scores for a given set of samples.
+
+        Parameters:
+        X (np.ndarray): Input data with shape (n_samples, n_features).
+
+        Returns:
+        np.ndarray: Predicted uplift scores for each sample.
+        """
+        uplift_scores = []
+
+        for sample in X:
+            node = self.tree_
+            while node.left is not None and node.right is not None:
+                if sample[node.split_feat] <= node.split_threshold:
+                    node = node.left
+                else:
+                    node = node.right
+
+            uplift_scores.append(node.ATE)
+
+        return np.array(uplift_scores)
+
+    def find_threshold_options(self, column_values):
         unique_values = np.unique(column_values)
         if len(unique_values) > 10:
             percentiles = np.percentile(
@@ -168,22 +68,26 @@ class UpliftTreeRegressor:
         threshold_options = np.unique(percentiles)
         return threshold_options
 
-    def calculate_delta_delta_p(X, y, treatment, feature, threshold):
+    def calculate_delta_delta_p(self, X, y, treatment, feature, threshold):
         treated_mask = (treatment == 1) & (X[:, feature] <= threshold)
         control_mask = (treatment == 0) & (X[:, feature] <= threshold)
 
         treated_group = y[treated_mask]
         control_group = y[control_mask]
 
-        uplift_treated = np.mean(treated_group) - np.mean(control_group)
+        uplift_treated_left = np.mean(treated_group) - np.mean(control_group)
 
-        treated_prop = np.sum(treatment == 1) / len(treatment)
-        control_prop = np.sum(treatment == 0) / len(treatment)
+        treated_mask = (treatment == 1) & (X[:, feature] > threshold)
+        control_mask = (treatment == 0) & (X[:, feature] > threshold)
 
-        delta_delta_p = uplift_treated - (treated_prop - control_prop)
+        treated_group = y[treated_mask]
+        control_group = y[control_mask]
+
+        uplift_treated_right = np.mean(treated_group) - np.mean(control_group)
+
+        delta_delta_p = np.abs(uplift_treated_left - uplift_treated_right)
 
         return delta_delta_p
-
 
     def _split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, feature: int) -> tuple[float, float]:
         best_threshold = None
@@ -192,19 +96,7 @@ class UpliftTreeRegressor:
         threshold_options = self.find_threshold_options(X[:, feature])
 
         for threshold in threshold_options:
-            treated_mask = (treatment == 1) & (X[:, feature] <= threshold)
-            control_mask = (treatment == 0) & (X[:, feature] <= threshold)
-
-            treated_group = y[treated_mask]
-            control_group = y[control_mask]
-
-            uplift_treated = np.mean(treated_group) - np.mean(control_group)
-
-            treated_prop = np.sum(treatment == 1) / len(treatment)
-            control_prop = np.sum(treatment == 0) / len(treatment)
-
-            delta_delta_p = uplift_treated - (treated_prop - control_prop)
-
+            delta_delta_p = self.calculate_delta_delta_p(X, y, treatment, feature, threshold)
             if delta_delta_p > best_delta_delta_p:
                 best_delta_delta_p = delta_delta_p
                 best_threshold = threshold
@@ -212,14 +104,17 @@ class UpliftTreeRegressor:
         return best_threshold, best_delta_delta_p
 
     def _best_split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> tuple[int, float, float]:
-        best_feature = 0
+        best_feature = None
         best_threshold = None
         best_delta_delta_p = float('-inf')
 
         for feature in range(self.n_features_):
             threshold, delta_delta_p = self._split(X=X, treatment=treatment, y=y, feature=feature)
-
             if delta_delta_p > best_delta_delta_p:
+                left_indices = X[:, feature] <= threshold
+                right_indices = X[:, feature] > threshold
+                if np.sum(left_indices) < self.min_samples_leaf or np.sum(right_indices) < self.min_samples_leaf:
+                    continue
                 best_delta_delta_p = delta_delta_p
                 best_threshold = threshold
                 best_feature = feature
@@ -228,7 +123,7 @@ class UpliftTreeRegressor:
 
     def _split_node(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, depth: int = 0) -> Node:
         n_samples = len(y)
-        uplift = np.mean(y[treatment == 1]) - np.mean(y[treatment == 0])
+        uplift = np.abs(np.mean(y[treatment == 1]) - np.mean(y[treatment == 0]))
 
         node = Node(
             n_items=n_samples,
@@ -237,7 +132,7 @@ class UpliftTreeRegressor:
             split_threshold=0,
         )
 
-        if depth >= self.max_depth or n_samples <= self.min_samples_split:
+        if depth >= self.max_depth or n_samples <= self.min_samples_leaf:
             return node
 
         best_feature, best_threshold, best_delta_delta_p = self._best_split(X, treatment, y)
@@ -245,142 +140,99 @@ class UpliftTreeRegressor:
         node.split_feat = best_feature
         node.split_threshold = best_threshold
 
-        treated_mask = (treatment == 1) & (X[:, best_feature] <= best_threshold)
-        control_mask = (treatment == 0) & (X[:, best_feature] <= best_threshold)
-        X_left, treatment_left, y_left = X[treated_mask], treatment[treated_mask], y[treated_mask]
-        X_right, treatment_right, y_right = X[control_mask], treatment[control_mask], y[control_mask]
+        if best_threshold is not None:
+            left_mask =  (X[:, best_feature] <= best_threshold)
+            right_mask = (X[:, best_feature] > best_threshold)
 
-        node.left = self._split_node(X_left, treatment_left, y_left, depth + 1)
-        node.right = self._split_node(X_right, treatment_right, y_right, depth + 1)
+            X_left, treatment_left, y_left = X[left_mask], treatment[left_mask], y[left_mask]
+            X_right, treatment_right, y_right = X[right_mask], treatment[right_mask], y[right_mask]
+
+            node.left = self._split_node(X_left, treatment_left, y_left, depth + 1)
+            node.right = self._split_node(X_right, treatment_right, y_right, depth + 1)
 
         return node
 
+    def save_tree_to_txt(self, node, file, depth=0):
+        if node is not None:
+            # Print the current node
+            file.write('\t' * depth + node.__class__.__name__ + '\n')
+            file.write('\t' * (depth + 1) + f'n_items: {node.n_items}\n')
+            file.write('\t' * (depth + 1) + f'ATE: {node.ATE}\n')
+            file.write('\t' * (depth + 1) + f'split_feat: {node.split_feat}\n')
+            file.write('\t' * (depth + 1) + f'split_threshold: {node.split_threshold}\n')
+
+            if node.left is None and node.right is None:
+                file.write('\t' * (depth + 1) + f'<leaf>\n')
+                file.write('\t' * (depth + 2) + f'n_items: {node.n_items}\n')
+                file.write('\t' * (depth + 2) + f'ATE: {node.ATE}\n')
+                file.write('\t' * (depth + 2) + f'split_feat: {node.split_feat}\n')
+                file.write('\t' * (depth + 2) + f'split_threshold: {node.split_threshold}\n')
+            else:
+                # Recursively write the left and right child nodes
+                self.save_tree_to_txt(node.left, file, depth + 1)
+                self.save_tree_to_txt(node.right, file, depth + 1)
+
+# # Load data from a CSV file
+# data = pd.read_csv('data/data.csv')
+
+# # Extract features and target variables
+# X_data = data.loc[:, data.columns.str.contains('feat')]
+# y_data = data['target']
+# treatment_data = data['treatment']
+
+# X = X_data.values
+# y = y_data.values
+# treatment = treatment_data.values
+
+# X_train, X_test, treatment_train, treatment_test, y_train, y_test = train_test_split(X, treatment, y, test_size=0.2, random_state=10)
+
+# # Задаем комбинации параметров, которые хотим попробовать
+# # max_depth_values = [3, 5, 7, 9]
+# # min_samples_leaf_values = [1000, 2000, 3000, 5000, 6000, 8000]
+# # min_samples_leaf_treated_values = [300, 500, 1000, 3000, 5000, 6500]
+# # min_samples_leaf_control_values = [300, 500, 1000, 3000, 5000, 6500]
+
+# max_depth_values = [3, 5, 7]
+# min_samples_leaf_values = [1000, 2000, 3000]
+# min_samples_leaf_treated_values = [300, 500, 1000]
+# min_samples_leaf_control_values = [300, 500, 1000]
+
+# best_uplift = float('-inf')
+# best_params = {}
+# best_uplift_model: UpliftTreeRegressor = None
+
+# # Перебираем все комбинации параметров
+# for max_depth in max_depth_values:
+#     for min_samples_leaf in min_samples_leaf_values:
+#         for min_samples_leaf_treated in min_samples_leaf_treated_values:
+#             for min_samples_leaf_control in min_samples_leaf_control_values:
+#                 uplift_model = UpliftTreeRegressor(
+#                     max_depth=max_depth,
+#                     min_samples_leaf=min_samples_leaf,
+#                     min_samples_leaf_treated=min_samples_leaf_treated,
+#                     min_samples_leaf_control=min_samples_leaf_control
+#                 )
+#                 uplift_model.fit(X_train, treatment_train, y_train)
+
+#                 # Получаем предсказания uplift и вычисляем метрику uplift@k
+#                 uplift_predictions = uplift_model.predict(X_test)
+#                 metric = uplift_at_k(y_test, uplift_predictions, treatment_test, k=0.2)
+
+#                 # Если текущая метрика лучше предыдущей, обновляем лучшие параметры
+#                 if metric > best_uplift:
+#                     best_uplift = metric
+#                     best_params = {
+#                         'max_depth': max_depth,
+#                         'min_samples_leaf': min_samples_leaf,
+#                         'min_samples_leaf_treated': min_samples_leaf_treated,
+#                         'min_samples_leaf_control': min_samples_leaf_control
+#                     }
+#                     best_uplift_model = uplift_model
 
 
+# # Save the tree to a text file
+# with open('data/uplift_tree.txt', 'w') as file:
+#     best_uplift_model.save_tree_to_txt(best_uplift_model.tree_, file)
 
-
-
-
-# class UpliftTreeRegressor:
-#     def __init__(self, max_depth=3,
-#                  min_samples_leaf=6000,
-#                  min_samples_leaf_treated=2500,
-#                  min_samples_leaf_control=2500):
-#         self.max_depth = max_depth
-#         self.min_samples_leaf = min_samples_leaf
-#         self.min_samples_leaf_treated = min_samples_leaf_treated
-#         self.min_samples_leaf_control = min_samples_leaf_control
-#         self.tree_ = None  # Дерево будет сохранено здесь
-
-#     def fit(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> 'UpliftTreeRegressor':
-#         """Fit model."""
-#         self.n_features_ = X.shape[1]
-#         self.tree_ = self._split_node(X, treatment, y)
-#         return self
-
-#     def predict(self, X: np.ndarray) -> np.ndarray:
-#         """Return predicts for X."""
-#         if self.tree_ is None:
-#             raise RuntimeError("Model has not been fitted yet.")
-
-#         predictions = np.array([self._predict_one_sample(sample, self.tree_) for sample in X])
-#         return predictions
-
-#     def find_threshold_options(self, column_values):
-#         unique_values = np.unique(column_values)
-#         if len(unique_values) > 10:
-#             percentiles = np.percentile(
-#                 column_values, [3, 5, 10, 20, 30, 50, 70, 80, 90, 95, 97]
-#             )
-#         else:
-#             percentiles = np.percentile(unique_values, [10, 50, 90])
-
-#         threshold_options = np.unique(percentiles)
-#         return threshold_options
-
-#     def _split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, feature: int) -> tuple[float, float]:
-#         """Find the best split for a node (one feature) using DeltaDeltaP criterion."""
-#         best_threshold = None
-#         best_delta_delta_p = float('-inf')  # Initialize with negative infinity
-
-#         threshold_options = self.find_threshold_options(X[:, feature])
-
-#         for threshold in threshold_options:
-#             treated_mask = X[:, feature] <= threshold
-#             control_mask = ~treated_mask
-
-#             treated_group = y[treatment == 1][treated_mask]
-#             control_group = y[treatment == 0][control_mask]
-
-#             uplift_treated = np.mean(treated_group) - np.mean(control_group)
-
-#             treated_prop = np.sum(treatment == 1) / len(treatment)
-#             control_prop = np.sum(treatment == 0) / len(treatment)
-
-#             delta_delta_p = uplift_treated - (treated_prop - control_prop)
-
-#             if delta_delta_p > best_delta_delta_p:
-#                 best_delta_delta_p = delta_delta_p
-#                 best_threshold = threshold
-
-#         return best_threshold, best_delta_delta_p
-
-#     def _best_split(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray) -> tuple[int, float, float]:
-#         """Find the best split for a node using DeltaDeltaP criterion."""
-#         best_feature = 0
-#         best_threshold = None
-#         best_delta_delta_p = float('-inf')  # Initialize with negative infinity
-
-#         for feature in range(self.n_features_):
-#             threshold, delta_delta_p = self._split(X=X, treatment=treatment, y=y, feature=feature)
-
-#             if delta_delta_p > best_delta_delta_p:
-#                 best_delta_delta_p = delta_delta_p
-#                 best_threshold = threshold
-#                 best_feature = feature
-
-#         return best_feature, best_threshold, best_delta_delta_p
-
-#     def _split_node(self, X: np.ndarray, treatment: np.ndarray, y: np.ndarray, depth: int = 0) -> Node:
-#         """Split a node and return the resulting left and right child nodes."""
-#         n_samples = len(y)
-#         value = np.mean(y)
-
-#         # Create a new node
-#         node = Node(
-#             n_items=n_samples,
-#             ATE=value,
-#             split_feat=None,  # Начальные значения, будут установлены позже
-#             split_threshold=0,
-#         )
-
-#         # Check termination conditions
-#         if depth >= self.max_depth or n_samples <= self.min_samples_leaf:
-#             return node
-
-#         # Find the best split
-#         best_feature, best_threshold, best_delta_delta_p = self._best_split(X, treatment, y)
-
-#         # Set the split feature and threshold in the node
-#         node.split_feat = best_feature
-#         node.split_threshold = best_threshold
-
-#         # Split the data based on the best feature and threshold
-#         treated_mask = X[:, best_feature] <= best_threshold
-#         control_mask = ~treated_mask
-#         X_left, treatment_left, y_left = X[treated_mask], treatment[treated_mask], y[treated_mask]
-#         X_right, treatment_right, y_right = X[control_mask], treatment[control_mask], y[control_mask]
-
-#         # Create left and right child nodes recursively
-#         node.left = self._split_node(X_left, treatment_left, y_left, depth + 1)
-#         node.right = self._split_node(X_right, treatment_right, y_right, depth + 1)
-
-#         return node
-
-#     def _predict_one_sample(self, sample, node):
-#         if node.split_feat is None:
-#             return node.ATE
-#         if sample[node.split_feat] <= node.split_threshold:
-#             return self._predict_one_sample(sample, node.left)
-#         else:
-#             return self._predict_one_sample(sample, node.right)
+# print(f'Best uplift@k: {best_uplift}')
+# print(f'Best parameters: {best_params}')
